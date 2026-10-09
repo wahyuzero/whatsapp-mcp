@@ -265,7 +265,9 @@ func run() error {
 	}
 
 	fmt.Fprintln(os.Stderr, "MCP server ready on stdio.")
-	return srv.Run(ctx, &mcp.StdioTransport{})
+	realStdout := os.Stdout
+	os.Stdout = os.Stderr
+	return srv.Run(ctx, &mcp.IOTransport{Reader: os.Stdin, Writer: realStdout})
 }
 
 // serveHTTP runs the streamable HTTP transport and shuts down cleanly on

@@ -21,6 +21,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	libsignalLogger "go.mau.fi/libsignal/logger"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -140,11 +141,14 @@ func New(ctx context.Context, opts Options) (*Client, error) {
 		hs.StorageQuotaMb = proto.Uint32(historySyncSizeMB)
 	}
 
-	level := "ERROR"
+	var sl libsignalLogger.Loggable = &signalLogger{out: out}
+	libsignalLogger.Setup(&sl)
+
+	minLevel := 3 // ERROR
 	if opts.Debug {
-		level = "DEBUG"
+		minLevel = 0 // DEBUG
 	}
-	logger := waLog.Stdout("whatsapp", level, true)
+	logger := &stderrLogger{mod: "whatsapp", min: minLevel, out: out}
 
 	// The session database holds the linked device's Signal keys. It is
 	// credentials, so it lives 0700 alongside the message store.
@@ -826,3 +830,48 @@ func (c *Client) autoReplyWith(chatJID, text string, spoken bool) {
 		fmt.Fprintf(c.out, "auto-reply could not send: %v\n", err)
 	}
 }
+
+type stderrLogger struct {
+	mod string
+	min int
+	out io.Writer
+}
+
+func (s *stderrLogger) outputf(level, msg string, args ...any) {
+	fmt.Fprintf(s.out, "%s [%s %s] %s\n", time.Now().Format("15:04:05.000"), s.mod, level, fmt.Sprintf(msg, args...))
+}
+
+func (s *stderrLogger) Errorf(msg string, args ...any) { s.outputf("ERROR", msg, args...) }
+func (s *stderrLogger) Warnf(msg string, args ...any) {
+	if s.min <= 2 {
+		s.outputf("WARN", msg, args...)
+	}
+}
+func (s *stderrLogger) Infof(msg string, args ...any) {
+	if s.min <= 1 {
+		s.outputf("INFO", msg, args...)
+	}
+}
+func (s *stderrLogger) Debugf(msg string, args ...any) {
+	if s.min <= 0 {
+		s.outputf("DEBUG", msg, args...)
+	}
+}
+func (s *stderrLogger) Sub(mod string) waLog.Logger {
+	return &stderrLogger{mod: fmt.Sprintf("%s/%s", s.mod, mod), min: s.min, out: s.out}
+}
+
+type signalLogger struct {
+	out io.Writer
+}
+
+func (s *signalLogger) Debug(caller, message string) {}
+func (s *signalLogger) Info(caller, message string)  {}
+func (s *signalLogger) Warning(caller, message string) {
+	fmt.Fprintf(s.out, "[SIGNAL WARN] %s: %s\n", caller, message)
+}
+func (s *signalLogger) Error(caller, message string) {
+	fmt.Fprintf(s.out, "[SIGNAL ERROR] %s: %s\n", caller, message)
+}
+func (s *signalLogger) Configure(settings string) {}
+

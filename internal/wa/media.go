@@ -67,14 +67,16 @@ func (c *Client) DownloadMedia(ctx context.Context, chatJID, messageID string) (
 		kind = whatsmeow.MediaDocument
 	}
 
-	data, err := c.wm.Download(ctx, &mediaDownloadable{
-		directPath: directPath(m.MediaURL),
-		mediaKey:   m.MediaKey,
-		fileSHA:    m.FileSHA256,
-		fileEncSHA: m.FileEncSHA,
-		fileLength: m.FileLength,
-		mediaType:  kind,
-	})
+	data, err := c.wm.DownloadMediaWithPath(
+		ctx,
+		directPath(m.MediaURL),
+		m.FileEncSHA,
+		m.FileSHA256,
+		m.MediaKey,
+		kind,
+		"",
+		false,
+	)
 	if err != nil {
 		return "", fmt.Errorf("download failed: %w", err)
 	}
@@ -228,13 +230,9 @@ func (c *Client) SendVoiceNote(ctx context.Context, chatJID, path string) (strin
 	return resp.ID, nil
 }
 
-// directPath strips the CDN host off a stored media URL, because whatsmeow
-// wants the path portion rather than the full URL.
+// directPath strips the CDN host off a stored media URL, keeping the path and query string.
 func directPath(url string) string {
 	if i := strings.Index(url, ".net/"); i != -1 {
-		if q := strings.Index(url[i+4:], "?"); q != -1 {
-			return url[i+4 : i+4+q]
-		}
 		return url[i+4:]
 	}
 	return url
